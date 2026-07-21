@@ -1,0 +1,199 @@
+# =============================================================================
+# Oto for Windows — Git ignore rules
+# Keep the repo lean: sources, lockfiles, icons, and scripts only.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# OS metadata
+# -----------------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+Icon?
+._*
+
+# -----------------------------------------------------------------------------
+# Node.js / package managers
+# -----------------------------------------------------------------------------
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/install-state.gz
+.yarn/unplugged/
+.yarn/build-state.yml
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Keep package-lock.json committed for reproducible installs.
+
+# -----------------------------------------------------------------------------
+# SvelteKit / Vite / frontend build output
+# -----------------------------------------------------------------------------
+.svelte-kit/
+build/
+dist/
+.vite/
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+package/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# -----------------------------------------------------------------------------
+# Rust / Cargo / Tauri build output
+# -----------------------------------------------------------------------------
+target/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/WixTools/
+**/*.rs.bk
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.profraw
+perf.data*
+core
+core.*
+
+# Cargo.lock is intentionally committed (application crate).
+
+# -----------------------------------------------------------------------------
+# Generated / unused icon packs (keep ico + primary PNGs for Windows)
+# -----------------------------------------------------------------------------
+src-tauri/icons/64x64.png
+src-tauri/icons/Square*.png
+src-tauri/icons/StoreLogo.png
+src-tauri/icons/android/
+src-tauri/icons/ios/
+
+# -----------------------------------------------------------------------------
+# Installers and release artifacts (build locally or CI)
+# -----------------------------------------------------------------------------
+*.msi
+*.msix
+*.exe
+*.nsis
+*.AppImage
+*.deb
+*.rpm
+*.dmg
+*.pkg
+*.app/
+*.app.tar.gz
+*.sig
+artifacts/
+releases-local/
+releases/
+dist-installer/
+
+# -----------------------------------------------------------------------------
+# Local speech models and captured media
+# -----------------------------------------------------------------------------
+models/
+model/
+ggml-*.bin
+*.ggml
+*.gguf
+*.onnx
+*.safetensors
+*.wav
+*.aiff
+*.aif
+*.mp3
+*.m4a
+*.flac
+
+# -----------------------------------------------------------------------------
+# Secrets, env files, certificates
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+.envrc
+.direnv/
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+*.mobileprovision
+credentials*.json
+secrets*.json
+
+# Never commit local runtime data
+config.json
+history.json
+oto-inject.log
+
+# -----------------------------------------------------------------------------
+# Logs and temp files
+# -----------------------------------------------------------------------------
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*~
+.cache/
+.tmp/
+tmp/
+temp/
+full-build.log
+whisper-build.log
+whisper-release.log
+
+# -----------------------------------------------------------------------------
+# Editors and local workspace
+# -----------------------------------------------------------------------------
+.idea/
+.vscode/
+.vs/
+*.swp
+*.swo
+*.code-workspace
+.fleet/
+.zed/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# -----------------------------------------------------------------------------
+# AI / agent / design scratch
+# -----------------------------------------------------------------------------
+.agents/
+.codex/
+.claude/
+.superpowers/
+.worktrees/
+.cursor/
+.design-qa/
+design-qa.md
+graphify-out/
+.hallmark/
+.oto-details.md
+oto-details.md
+
+# -----------------------------------------------------------------------------
+# Packaging / CI local state
+# -----------------------------------------------------------------------------
+.flatpak-build/
+.flatpak-repo/
+*.flatpak
+.turbo/
+.nx/

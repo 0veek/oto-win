@@ -1,0 +1,7 @@
+# Applied automatically for every cargo/tauri build of this crate.
+
+[env]
+# Required by whisper-rs-sys / bindgen. Install LLVM if missing:
+#   winget install --id LLVM.LLVM -e
+# Default install path on Windows:
+LIBCLANG_PATH = { value = "C:\\Program Files\\LLVM\\bin", force = true }
