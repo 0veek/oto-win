@@ -192,7 +192,7 @@ src-tauri\target\release\bundle\msi\Oto_0.1.0_x64_en-US.msi
 ### 1. Clone and install frontend dependencies
 
 ```powershell
-git clone https://github.com/<your-org>/oto-win.git
+git clone https://github.com/0veek/oto-win.git
 cd oto-win
 npm install
 ```
