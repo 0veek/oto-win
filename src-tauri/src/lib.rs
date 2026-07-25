@@ -114,6 +114,11 @@ fn setup_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            // Quiet tray launch when Windows starts Oto at login.
+            Some(vec!["--from-autostart".into()]),
+        ))
         .invoke_handler(tauri::generate_handler![
             commands::config_cmds::get_config,
             commands::config_cmds::set_config,
@@ -150,6 +155,8 @@ pub fn run() {
 
             setup_tray(app.handle())?;
 
+            let from_autostart = std::env::args().any(|arg| arg == "--from-autostart");
+
             if let Some(settings) = app.get_webview_window("settings") {
                 let settings_for_event = settings.clone();
                 settings.on_window_event(move |event| {
@@ -158,7 +165,10 @@ pub fn run() {
                         let _ = settings_for_event.hide();
                     }
                 });
-                let _ = settings.show();
+                // Login autostart should land in the tray only; open Settings from the tray.
+                if !from_autostart {
+                    let _ = settings.show();
+                }
             }
 
             // Overlay: preload webview, restore position, persist user drags.

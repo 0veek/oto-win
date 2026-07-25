@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { IconChevronDown } from "@tabler/icons-svelte";
   import type { AppConfig, IdleBehavior, ThemePreset } from "$lib/types";
 
@@ -12,6 +14,41 @@
   let previewBusy = $state(false);
   let micBusy = $state(false);
   let status = $state<string | null>(null);
+  let autostartEnabled = $state(false);
+  let autostartBusy = $state(false);
+  let autostartError = $state<string | null>(null);
+
+  onMount(() => {
+    void isEnabled()
+      .then((value) => {
+        autostartEnabled = value;
+      })
+      .catch(() => {
+        // Browser preview or plugin unavailable.
+        autostartEnabled = false;
+      });
+  });
+
+  async function setAutostart(next: boolean) {
+    if (autostartBusy) return;
+    const previous = autostartEnabled;
+    autostartEnabled = next;
+    autostartBusy = true;
+    autostartError = null;
+    try {
+      if (next) {
+        await enable();
+      } else {
+        await disable();
+      }
+      autostartEnabled = await isEnabled();
+    } catch (e) {
+      autostartEnabled = previous;
+      autostartError = `Could not update startup: ${String(e)}`;
+    } finally {
+      autostartBusy = false;
+    }
+  }
 
   const IDLE_OPTIONS: {
     value: IdleBehavior;
@@ -68,7 +105,7 @@
   <header>
     <h2 class="text-xl font-semibold tracking-tight">Appearance</h2>
     <p class="mt-1 text-sm text-slate-400">
-      Overlay idle behavior and quick UI previews without a full dictation run.
+      Theme, startup, overlay idle behavior, and quick UI previews without a full dictation run.
     </p>
   </header>
 
@@ -95,6 +132,24 @@
       <span><span class="block text-sm font-medium text-slate-200">Reduce motion</span><span class="block text-xs text-slate-500">Disable non-essential pulses and transitions.</span></span>
       <input type="checkbox" bind:checked={config.reduce_motion} />
     </label>
+
+    <label class="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-slate-900/40 px-4 py-3">
+      <span>
+        <span class="block text-sm font-medium text-slate-200">Start with Windows</span>
+        <span class="block text-xs text-slate-500">
+          Launch Oto in the system tray when you sign in. Takes effect immediately (no Save needed).
+        </span>
+      </span>
+      <input
+        type="checkbox"
+        checked={autostartEnabled}
+        disabled={autostartBusy}
+        onchange={(event) => void setAutostart(event.currentTarget.checked)}
+      />
+    </label>
+    {#if autostartError}
+      <p class="text-sm text-rose-400" role="alert">{autostartError}</p>
+    {/if}
 
     <fieldset class="space-y-3">
       <legend class="text-sm font-medium text-slate-300">When idle</legend>
