@@ -33,7 +33,7 @@ This repository is the **Windows port** of [Oto](https://github.com/0veek/oto) (
 Most dictation tools force a choice between a cloud-only service, a local model with a developer-oriented interface, or an intrusive floating window. Oto keeps the interaction small while making the pipeline configurable:
 
 - **System-wide push-to-talk** — dictate into browsers, editors, chat apps, notes, terminals, and other Windows applications.
-- **Cloud or on-device transcription** — OpenAI-compatible speech endpoints or a local whisper.cpp-compatible model.
+- **Cloud or on-device transcription** — Deepgram Nova-3, OpenAI-compatible speech endpoints, or a local whisper.cpp-compatible model.
 - **Optional writing cleanup** — punctuation, grammar, filler words, and tone before insertion.
 - **Reusable writing tools** — personal dictionary, exact-match voice snippets, and style presets.
 - **Selected-text commands** — select text and say instructions such as “make this concise” or “translate this to Spanish.”
@@ -51,7 +51,7 @@ flowchart LR
     B --> C["Record microphone audio"]
     C --> D["Release the shortcut"]
     D --> E{"Transcription backend"}
-    E -->|Cloud| F["OpenAI-compatible speech API"]
+    E -->|Cloud| F["Deepgram or OpenAI-compatible STT"]
     E -->|Local| G["whisper-rs / whisper.cpp"]
     F --> H["Raw transcript"]
     G --> H
@@ -89,10 +89,10 @@ flowchart LR
 
 - Press-and-hold global shortcut with separate key-down / key-up handling.
 - Native microphone capture through `cpal` (WASAPI on Windows), with multichannel-to-mono downmixing.
-- OpenAI-compatible `/audio/transcriptions` support (OpenAI, Groq, OpenRouter, custom endpoints).
+- Cloud transcription through Deepgram (Nova-3 with `smart_format` and keyterm prompting), OpenAI-compatible APIs (OpenAI, Groq, OpenRouter, custom endpoints), or offline `whisper-rs`.
 - Local transcription through `whisper-rs` and whisper.cpp-compatible `ggml` model files.
 - Optional language hinting and automatic language detection.
-- Dictionary-based vocabulary prompting for names, technical terms, and preferred spellings.
+- Dictionary-based vocabulary prompting (Whisper `prompt`) and Deepgram Nova-3 keyterm lists.
 - Optional partial results with Local Whisper (preview about every 1.8s; preview failures never abort the final pass).
 
 ### Writing assistance
@@ -251,7 +251,7 @@ Outputs:
 ## First-run setup
 
 1. Start Oto — Settings opens; a tray icon appears.
-2. **Providers** — pick OpenAI / Groq / OpenRouter / Custom and save an API key (Credential Manager).
+2. **Providers** — pick Deepgram / OpenAI / Groq / OpenRouter / Custom and save an API key (Credential Manager).
 3. **Models** — choose STT backend (`cloud` or `local_whisper`), models, polish settings.
 4. **Hotkeys** — default is `Ctrl+Shift+Space`. Save after changing.
 5. **Injection** — leave **Auto** unless you need a specific mode; use **Test insertion**.
@@ -283,7 +283,7 @@ Outputs:
 
 | Section | Purpose |
 | --- | --- |
-| **Providers** | Preset or custom OpenAI-compatible endpoint; API key in Credential Manager. |
+| **Providers** | Deepgram or OpenAI-compatible endpoint; API key in Credential Manager. |
 | **Models** | Cloud vs Local Whisper, STT/polish models, temperature, language, streaming. |
 | **Hotkeys** | Global push-to-talk chord. |
 | **Injection** | Delivery mode + insertion test. |

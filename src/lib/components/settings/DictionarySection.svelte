@@ -99,7 +99,7 @@
 
     <p class="text-xs leading-relaxed text-slate-500">
       With vocabulary boosting enabled, terms are passed to the active transcription engine.
-      Cloud engines may interpret prompt support differently.
+      Deepgram uses Nova-3 keyterm prompting; OpenAI-compatible engines use a free-form prompt.
     </p>
   </div>
 </section>
