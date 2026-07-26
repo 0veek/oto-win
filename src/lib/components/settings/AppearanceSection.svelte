@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { IconChevronDown } from "@tabler/icons-svelte";
   import type { AppConfig, IdleBehavior, ThemePreset } from "$lib/types";
 
@@ -14,41 +13,22 @@
   let previewBusy = $state(false);
   let micBusy = $state(false);
   let status = $state<string | null>(null);
-  let autostartEnabled = $state(false);
-  let autostartBusy = $state(false);
-  let autostartError = $state<string | null>(null);
+  /** True when the registry says Oto launches at sign-in but config disagrees. */
+  let autostartDrifted = $state(false);
 
   onMount(() => {
-    void isEnabled()
-      .then((value) => {
-        autostartEnabled = value;
+    // The startup entry can be removed outside Oto — Task Manager's Startup tab,
+    // or a reinstall to a different path. Reconcile the saved flag against what
+    // Windows actually holds, so the checkbox never claims something untrue.
+    void invoke<boolean>("autostart_active")
+      .then((active) => {
+        autostartDrifted = active !== config.autostart_enabled;
       })
       .catch(() => {
         // Browser preview or plugin unavailable.
-        autostartEnabled = false;
+        autostartDrifted = false;
       });
   });
-
-  async function setAutostart(next: boolean) {
-    if (autostartBusy) return;
-    const previous = autostartEnabled;
-    autostartEnabled = next;
-    autostartBusy = true;
-    autostartError = null;
-    try {
-      if (next) {
-        await enable();
-      } else {
-        await disable();
-      }
-      autostartEnabled = await isEnabled();
-    } catch (e) {
-      autostartEnabled = previous;
-      autostartError = `Could not update startup: ${String(e)}`;
-    } finally {
-      autostartBusy = false;
-    }
-  }
 
   const IDLE_OPTIONS: {
     value: IdleBehavior;
@@ -137,18 +117,17 @@
       <span>
         <span class="block text-sm font-medium text-slate-200">Start with Windows</span>
         <span class="block text-xs text-slate-500">
-          Launch Oto in the system tray when you sign in. Takes effect immediately (no Save needed).
+          Launch Oto in the notification area when you sign in, so the shortcut works without
+          opening anything.
         </span>
       </span>
-      <input
-        type="checkbox"
-        checked={autostartEnabled}
-        disabled={autostartBusy}
-        onchange={(event) => void setAutostart(event.currentTarget.checked)}
-      />
+      <input type="checkbox" bind:checked={config.autostart_enabled} />
     </label>
-    {#if autostartError}
-      <p class="text-sm text-rose-400" role="alert">{autostartError}</p>
+    {#if autostartDrifted}
+      <p class="text-sm text-amber-300" role="status">
+        Windows and this setting disagree — something outside Oto changed the startup entry. Save to
+        apply what is shown here.
+      </p>
     {/if}
 
     <fieldset class="space-y-3">

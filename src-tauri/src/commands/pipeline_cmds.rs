@@ -9,13 +9,18 @@ use crate::state::AppState;
 
 #[tauri::command]
 pub async fn ptt_down(state: State<'_, AppState>) -> Result<(), OtoError> {
-    *state.cancel_flag.lock().await = false;
     state.pipeline.ptt_down().await
 }
 
 #[tauri::command]
 pub async fn ptt_up(state: State<'_, AppState>) -> Result<(), OtoError> {
     state.pipeline.ptt_up().await
+}
+
+/// Remove the text Oto last inserted, when that is still safe.
+#[tauri::command]
+pub async fn undo_last_insertion(state: State<'_, AppState>) -> Result<String, OtoError> {
+    state.pipeline.undo_last_insertion().await
 }
 
 /// Begin select-and-rewrite Command Mode. The delay gives a settings-window
@@ -25,7 +30,6 @@ pub async fn start_command_mode(
     state: State<'_, AppState>,
     focus_delay_ms: Option<u64>,
 ) -> Result<(), OtoError> {
-    *state.cancel_flag.lock().await = false;
     state
         .pipeline
         .command_down(focus_delay_ms.unwrap_or(0))
@@ -34,7 +38,6 @@ pub async fn start_command_mode(
 
 #[tauri::command]
 pub async fn cancel_dictation(state: State<'_, AppState>) -> Result<(), OtoError> {
-    *state.cancel_flag.lock().await = true;
     state.pipeline.cancel().await
 }
 
@@ -42,9 +45,10 @@ pub async fn cancel_dictation(state: State<'_, AppState>) -> Result<(), OtoError
 /// idle behavior is set to hide.
 #[tauri::command]
 pub async fn debug_preview_listening(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    if !state.pipeline.is_idle() {
-        return Err("Finish or cancel the current dictation before previewing".into());
-    }
+    state
+        .pipeline
+        .begin_exclusive_test()
+        .map_err(|error| error.to_string())?;
 
     if let Some(window) = app.get_webview_window("overlay") {
         position_overlay(&window);
@@ -64,6 +68,8 @@ pub async fn debug_preview_listening(app: AppHandle, state: State<'_, AppState>)
         let _ = app.emit("pipeline://event", PipelineEvent::Level { level });
         sleep(Duration::from_millis(90)).await;
     }
+
+    state.pipeline.end_exclusive_test();
 
     let _ = app.emit(
         "pipeline://event",

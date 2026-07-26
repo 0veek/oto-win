@@ -55,9 +55,9 @@ pub fn client_from_config(cfg: &AppConfig) -> OtoResult<OpenAiCompatClient> {
     };
     let key = match secrets::get_api_key(&account)? {
         Some(key) => key,
-        None if base.starts_with("http://127.0.0.1") || base.starts_with("http://localhost") => {
-            String::new()
-        }
+        // Local inference servers need no credential. Match on the parsed host so
+        // a remote "http://localhost.example.com" cannot claim the exemption.
+        None if is_local_endpoint(&base) => String::new(),
         None => return Err(OtoError::Message("API key not set".into())),
     };
     Ok(OpenAiCompatClient::new(
@@ -71,6 +71,30 @@ pub fn client_from_config(cfg: &AppConfig) -> OtoResult<OpenAiCompatClient> {
             .unwrap_or_else(|| cfg.polish_model.clone()),
         cfg.temperature,
     ))
+}
+
+/// True when `url` points at this machine (loopback address or `localhost`).
+pub fn is_loopback_url(url: &reqwest::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    // RFC 6761 reserves localhost (and its subdomains) for loopback.
+    if host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    // host_str keeps IPv6 literals bracketed ("[::1]").
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    bare.parse::<std::net::IpAddr>()
+        .map(|address| address.is_loopback())
+        .unwrap_or(false)
+}
+
+/// True for `http(s)://localhost…` / loopback base URLs.
+fn is_local_endpoint(base: &str) -> bool {
+    reqwest::Url::parse(base.trim())
+        .map(|url| is_loopback_url(&url))
+        .unwrap_or(false)
 }
 
 /// Map UI-friendly language names / tags to ISO-639-1 for Whisper-compatible APIs.
@@ -141,10 +165,15 @@ async fn http_error_message(res: reqwest::Response, what: &str) -> OtoError {
             let trimmed = body.trim();
             if trimmed.is_empty() {
                 status.to_string()
-            } else if trimmed.len() > 300 {
-                format!("{}…", &trimmed[..300])
             } else {
-                trimmed.to_string()
+                // Char-safe truncation — byte slicing panics on multi-byte UTF-8.
+                let mut iter = trimmed.chars();
+                let head: String = iter.by_ref().take(300).collect();
+                if iter.next().is_some() {
+                    format!("{head}…")
+                } else {
+                    head
+                }
             }
         });
     OtoError::Message(format!("{what} failed ({status}): {detail}"))
@@ -220,6 +249,15 @@ pub fn build_polish_system_prompt(ctx: &PolishContext) -> String {
         p.push_str(" Write in language: ");
         p.push_str(language);
         p.push('.');
+    }
+    if let Some(app_context) = ctx
+        .app_context
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        p.push(' ');
+        p.push_str(app_context);
     }
     p
 }
@@ -312,6 +350,7 @@ mod tests {
             language: Some("en".into()),
             dictionary: vec!["Kubernetes".into(), "Oto".into()],
             tone_hint: String::new(),
+            app_context: None,
         };
         let prompt = build_polish_system_prompt(&ctx);
         assert!(prompt.contains("Kubernetes"));
@@ -325,6 +364,7 @@ mod tests {
             language: None,
             dictionary: vec![],
             tone_hint: "professional and concise".into(),
+            app_context: None,
         };
         let prompt = build_polish_system_prompt(&ctx);
         assert!(prompt.contains("professional and concise"));
@@ -337,11 +377,47 @@ mod tests {
             language: None,
             dictionary: vec![],
             tone_hint: "   ".into(),
+            app_context: None,
         };
         let prompt = build_polish_system_prompt(&ctx);
         assert!(!prompt.contains("Prefer these spellings"));
         assert!(!prompt.contains("Tone/style:"));
         assert!(prompt.contains("expert editor"));
+    }
+
+    #[test]
+    fn polish_prompt_carries_application_context_when_present() {
+        let ctx = PolishContext {
+            app_context: Some("This text will be typed into the application \"slack\".".into()),
+            ..PolishContext::default()
+        };
+        let prompt = build_polish_system_prompt(&ctx);
+        assert!(prompt.contains("slack"));
+    }
+
+    #[test]
+    fn polish_prompt_omits_blank_application_context() {
+        // Level None and a redacted app both produce nothing; neither should
+        // leave a dangling fragment in the prompt.
+        let ctx = PolishContext {
+            app_context: Some("   ".into()),
+            ..PolishContext::default()
+        };
+        let prompt = build_polish_system_prompt(&ctx);
+        assert!(prompt.trim_end().ends_with("Output only the final text."));
+    }
+
+    #[test]
+    fn only_real_loopback_hosts_skip_the_api_key() {
+        assert!(is_local_endpoint("http://127.0.0.1:8080/v1"));
+        assert!(is_local_endpoint("http://localhost:1234/v1"));
+        assert!(is_local_endpoint("http://[::1]:8080/v1"));
+        assert!(is_local_endpoint("http://127.0.0.2:8080/v1"));
+        // Prefix matching used to treat these remote hosts as local.
+        assert!(!is_local_endpoint("http://localhost.example.com/v1"));
+        assert!(!is_local_endpoint("http://127.0.0.1.example.com/v1"));
+        assert!(!is_local_endpoint("https://api.groq.com/openai/v1"));
+        assert!(!is_local_endpoint("not a url"));
     }
 
     #[test]

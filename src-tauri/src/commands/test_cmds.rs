@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::time::{sleep, Duration};
 
-use crate::audio::AudioRecorder;
+use crate::audio::{AudioRecorder, CaptureTuning};
 use crate::config::{load_config, IdleBehavior};
 use crate::error::OtoError;
 use crate::injection::{
@@ -54,10 +54,10 @@ pub async fn test_injection() -> Result<String, OtoError> {
     let result = inject_text_to(sample, &cfg.injection_mode, Some(&focus)).await?;
     let tooling = paste_tooling_summary();
     let target = focus
-        .name
+        .class
         .clone()
-        .or(focus.class.clone())
-        .unwrap_or_else(|| "unknown-app".into());
+        .or_else(|| focus.title.clone())
+        .unwrap_or_else(|| "unknown-window".into());
     let msg = match result {
         InjectResult::Accessibility => {
             format!("Injected via UI Automation into {target} ({tooling})")
@@ -78,11 +78,8 @@ pub async fn test_injection() -> Result<String, OtoError> {
 /// Capture ~2s of microphone audio and stream level events (no STT).
 #[tauri::command]
 pub async fn test_microphone(app: AppHandle, state: State<'_, AppState>) -> Result<(), OtoError> {
-    if !state.pipeline.is_idle() {
-        return Err(OtoError::Message(
-            "Finish or cancel the current dictation before testing the microphone".into(),
-        ));
-    }
+    // Hold the pipeline exclusively so global PTT cannot open a second stream.
+    state.pipeline.begin_exclusive_test()?;
 
     show_overlay_for_test(&app);
     let _ = app.emit(
@@ -90,9 +87,16 @@ pub async fn test_microphone(app: AppHandle, state: State<'_, AppState>) -> Resu
         PipelineEvent::state(PipelineState::Listening, Some("Mic test".into())),
     );
 
-    let recorder = match AudioRecorder::start(app.clone()) {
+    // Exercise the user's real device, gain, and gate settings — a mic test that
+    // bypassed them would pass while dictation stayed silent.
+    let tuning = crate::config::load_config()
+        .map(|cfg| CaptureTuning::from_config(&cfg))
+        .unwrap_or_default();
+
+    let recorder = match AudioRecorder::start(app.clone(), tuning) {
         Ok(r) => r,
         Err(e) => {
+            state.pipeline.end_exclusive_test();
             let _ = app.emit(
                 "pipeline://event",
                 PipelineEvent::Error {
@@ -115,6 +119,7 @@ pub async fn test_microphone(app: AppHandle, state: State<'_, AppState>) -> Resu
 
     // Drop stream (levels already streamed during capture).
     let _ = recorder.stop();
+    state.pipeline.end_exclusive_test();
 
     let _ = app.emit(
         "pipeline://event",

@@ -1,6 +1,6 @@
 [package]
 name = "oto"
-version = "0.1.0"
+version = "0.2.0"
 description = "System-wide AI voice dictation for Windows"
 authors = ["you"]
 edition = "2021"
@@ -34,11 +34,17 @@ tauri-plugin-global-shortcut = "2.3.2"
 async-trait = "0.1.91"
 arboard = "3.6.1"
 whisper-rs = "0.16.0"
+# Streaming STT. rustls only — no native-tls, so no OpenSSL on the build host.
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+futures-util = "0.3.33"
 windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_Threading",
+  # Reading the focused control's selection for the `Selection` context tier.
+  "Win32_UI_Accessibility",
+  "Win32_System_Com",
 ] }
 # Pin to match `windows` 0.61 / Tauri. Without this, cpal's loose range can pull
 # windows-core 0.62 and break the WASAPI host with Interface trait mismatches.

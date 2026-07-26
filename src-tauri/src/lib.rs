@@ -12,7 +12,7 @@ mod state;
 use std::sync::Arc;
 
 use config::{load_config, save_config, IdleBehavior};
-use pipeline::orchestrator::position_overlay;
+use pipeline::orchestrator::{apply_overlay_scale, position_overlay};
 use pipeline::Pipeline;
 use state::AppState;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,9 +20,8 @@ use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, Runtime,
+    Emitter, Manager, Runtime,
 };
-use tokio::sync::Mutex;
 
 fn setup_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     let start = MenuItem::with_id(
@@ -40,9 +39,16 @@ fn setup_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
+    let undo = MenuItem::with_id(
+        app,
+        "undo_insertion",
+        "Undo Last Insertion",
+        true,
+        None::<&str>,
+    )?;
     let open = MenuItem::with_id(app, "open_settings", "Open Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&start, &stop, &command, &open, &quit])?;
+    let menu = Menu::with_items(app, &[&start, &stop, &command, &undo, &open, &quit])?;
 
     let icon = app
         .default_window_icon()
@@ -79,6 +85,28 @@ fn setup_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
                     tauri::async_runtime::spawn(async move {
                         if let Err(e) = pipeline.command_down(0).await {
                             eprintln!("command mode (tray): {e}");
+                        }
+                    });
+                }
+            }
+            "undo_insertion" => {
+                if let Some(state) = app.try_state::<AppState>() {
+                    let pipeline = state.pipeline.clone();
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        match pipeline.undo_last_insertion().await {
+                            Ok(message) => eprintln!("oto undo: {message}"),
+                            Err(error) => {
+                                // Surface the refusal on the overlay: silently
+                                // doing nothing reads as a broken menu item.
+                                eprintln!("oto undo: {error}");
+                                let _ = app.emit(
+                                    "pipeline://event",
+                                    pipeline::events::PipelineEvent::Error {
+                                        message: error.to_string(),
+                                    },
+                                );
+                            }
                         }
                     });
                 }
@@ -128,13 +156,25 @@ pub fn run() {
             commands::config_cmds::set_provider_api_key,
             commands::config_cmds::provider_api_key_present,
             commands::config_cmds::get_app_version,
+            commands::config_cmds::autostart_active,
             commands::config_cmds::set_overlay_position,
+            commands::config_cmds::list_audio_inputs,
+            commands::config_cmds::preview_sound_cue,
+            commands::config_cmds::probe_focused_window,
+            commands::config_cmds::suggest_replacements,
+            commands::config_cmds::add_replacement_rules,
             commands::history_cmds::get_history,
             commands::history_cmds::delete_history_entry,
             commands::history_cmds::clear_history,
+            commands::history_cmds::get_usage_stats,
+            commands::history_cmds::get_history_audio,
+            commands::history_cmds::retranscribe_history,
+            commands::history_cmds::reinsert_history,
+            commands::audio_cmds::transcribe_audio_file,
             commands::history_cmds::copy_history_text,
             commands::pipeline_cmds::ptt_down,
             commands::pipeline_cmds::ptt_up,
+            commands::pipeline_cmds::undo_last_insertion,
             commands::pipeline_cmds::start_command_mode,
             commands::pipeline_cmds::cancel_dictation,
             commands::pipeline_cmds::debug_preview_listening,
@@ -148,10 +188,7 @@ pub fn run() {
         .setup(|app| {
             app.manage(hotkeys::HotkeyManager::default());
             let pipeline = Arc::new(Pipeline::new(app.handle().clone()));
-            app.manage(AppState {
-                cancel_flag: Arc::new(Mutex::new(false)),
-                pipeline,
-            });
+            app.manage(AppState { pipeline });
 
             setup_tray(app.handle())?;
 
@@ -173,6 +210,11 @@ pub fn run() {
 
             // Overlay: preload webview, restore position, persist user drags.
             if let Some(overlay) = app.get_webview_window("overlay") {
+                // The pill is laid out in rem, so the window has to follow the
+                // saved text-size preference or it clips at larger scales.
+                if let Ok(cfg) = load_config() {
+                    apply_overlay_scale(&overlay, cfg.font_scale);
+                }
                 position_overlay(&overlay);
                 // Overlay is visual-only; if it accepts focus, injected keys land in Oto.
                 let _ = overlay.set_focusable(false);

@@ -71,6 +71,13 @@ input[type="range"] {
   outline-offset: 2px;
 }
 
+/* First-run wizard: same theme surface as Settings, without the nav grid. */
+.oto-settings-onboarding {
+  min-height: 100dvh;
+  color: var(--color-ink);
+  background: var(--color-paper);
+}
+
 /* Settings window shell */
 .oto-settings {
   display: grid;

@@ -1,4 +1,11 @@
 //! Save/restore the foreground window so injection hits the dictation target.
+//!
+//! Modes and the polish context both need to know *which* application is being
+//! dictated into, so the snapshot carries an application class and a window
+//! title alongside the handle used for refocusing. On Windows the closest thing
+//! to an X11/Wayland app class is the executable stem — `chrome` for
+//! `chrome.exe` — which is stable, human-readable, and what a user would type
+//! into a Mode rule.
 
 use windows::core::PWSTR;
 use windows::Win32::Foundation::{CloseHandle, HWND};
@@ -12,11 +19,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 /// Snapshot of the application that should receive injected text.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FocusTarget {
     pub pid: Option<i32>,
-    pub name: Option<String>,
+    /// Executable stem of the owning process, lowercase-insensitively matched by
+    /// Modes and the context blocklist. `Some("code")` for `Code.exe`.
     pub class: Option<String>,
+    /// Window title at capture time.
+    pub title: Option<String>,
     /// HWND stored as isize so FocusTarget stays Send + Sync.
     pub hwnd: Option<isize>,
 }
@@ -77,12 +87,10 @@ fn target_from_hwnd(hwnd: HWND) -> FocusTarget {
     }
     let mut pid = 0u32;
     unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
-    let name = process_name(pid).or_else(|| window_title(hwnd));
-    let title = window_title(hwnd);
     FocusTarget {
         pid: if pid == 0 { None } else { Some(pid as i32) },
-        name: name.clone(),
-        class: title,
+        class: process_name(pid),
+        title: window_title(hwnd),
         hwnd: Some(hwnd.0 as isize),
     }
 }
@@ -104,6 +112,12 @@ pub fn capture_focus_target() -> FocusTarget {
         return FocusTarget::default();
     }
     target_from_hwnd(hwnd)
+}
+
+/// Async wrapper, for parity with the Linux build where focus detection has to
+/// fall back to an async accessibility query. Windows answers synchronously.
+pub async fn capture_focus_target_async() -> FocusTarget {
+    capture_focus_target()
 }
 
 /// Restore focus to a previously captured target. Returns true if activation ran.
@@ -160,5 +174,13 @@ mod tests {
     fn active_focus_summary_nonempty() {
         let s = active_focus_summary();
         assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn oto_windows_are_never_injection_targets() {
+        assert!(is_oto_window(std::process::id(), None, None));
+        assert!(is_oto_window(1234, Some("Oto — Settings"), None));
+        assert!(is_oto_window(1234, None, Some("oto")));
+        assert!(!is_oto_window(1234, Some("Untitled — Notepad"), Some("notepad")));
     }
 }

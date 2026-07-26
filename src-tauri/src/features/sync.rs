@@ -23,16 +23,17 @@ impl From<&AppConfig> for SyncDocument {
 }
 
 fn validate_endpoint(endpoint: &str) -> OtoResult<()> {
-    let endpoint = endpoint.trim();
-    if endpoint.starts_with("https://")
-        || endpoint.starts_with("http://127.0.0.1")
-        || endpoint.starts_with("http://localhost")
-    {
-        Ok(())
-    } else {
-        Err(OtoError::Message(
+    // Compare the parsed host, not a string prefix: "http://localhost.example.com"
+    // starts with "http://localhost" yet is a remote host, which would have sent
+    // the bearer token over plaintext.
+    let url = reqwest::Url::parse(endpoint.trim())
+        .map_err(|error| OtoError::Message(format!("Sync endpoint is not a valid URL: {error}")))?;
+    match url.scheme() {
+        "https" => Ok(()),
+        "http" if crate::providers::openai_compat::is_loopback_url(&url) => Ok(()),
+        _ => Err(OtoError::Message(
             "Sync endpoint must use HTTPS (HTTP is allowed only for localhost)".into(),
-        ))
+        )),
     }
 }
 
@@ -51,8 +52,12 @@ fn merge_by_id<T, F>(local: &mut Vec<T>, remote: Vec<T>, id: F)
 where
     F: Fn(&T) -> &str,
 {
+    // Remote wins on id collision so edits synced from another machine apply.
+    // Local-only items (ids not present remotely) are kept.
     for value in remote {
-        if !local.iter().any(|existing| id(existing) == id(&value)) {
+        if let Some(existing) = local.iter_mut().find(|existing| id(existing) == id(&value)) {
+            *existing = value;
+        } else {
             local.push(value);
         }
     }
@@ -102,7 +107,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn merge_keeps_local_conflicts_and_adds_remote_items() {
+    fn endpoint_validation_requires_https_or_real_loopback() {
+        assert!(validate_endpoint("https://example.com/oto.json").is_ok());
+        assert!(validate_endpoint(" http://127.0.0.1:8080/oto.json ").is_ok());
+        assert!(validate_endpoint("http://localhost:3000/oto.json").is_ok());
+        // Prefix matching used to accept these over plaintext with a bearer token.
+        assert!(validate_endpoint("http://localhost.example.com/oto.json").is_err());
+        assert!(validate_endpoint("http://127.0.0.1.example.com/oto.json").is_err());
+        assert!(validate_endpoint("http://example.com/oto.json").is_err());
+        assert!(validate_endpoint("ftp://example.com/oto.json").is_err());
+        assert!(validate_endpoint("").is_err());
+    }
+
+    #[test]
+    fn merge_applies_remote_edits_and_adds_remote_items() {
         let mut config = AppConfig {
             dictionary: vec!["Oto".into()],
             snippets: vec![Snippet {
@@ -137,6 +155,8 @@ mod tests {
         );
         assert_eq!(config.dictionary, vec!["Oto", "Tauri"]);
         assert_eq!(config.snippets.len(), 2);
-        assert_eq!(config.snippets[0].trigger, "local");
+        assert_eq!(config.snippets[0].trigger, "remote");
+        assert_eq!(config.snippets[0].expansion, "remote");
+        assert_eq!(config.snippets[1].id, "new");
     }
 }

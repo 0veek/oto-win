@@ -4,12 +4,14 @@
 mod clipboard;
 mod focus;
 mod paste;
+pub(crate) mod uia;
 
 pub use clipboard::{get_clipboard_text, set_clipboard_text};
 pub use focus::{
-    active_focus_summary, capture_focus_target, restore_focus_target, FocusTarget,
+    active_focus_summary, capture_focus_target, capture_focus_target_async, restore_focus_target,
+    FocusTarget,
 };
-pub use paste::{simulate_copy_to, simulate_paste_to, simulate_type_to};
+pub use paste::{simulate_backspace, simulate_copy_to, simulate_paste_to, simulate_type_to};
 
 use crate::config::InjectionMode;
 use crate::error::{OtoError, OtoResult};
@@ -43,6 +45,11 @@ fn append_inject_log(message: &str) {
     eprintln!("oto injection: {message}");
 }
 
+/// How long the transcript stays on the clipboard before the previous contents
+/// are put back. Long enough for any application to service the synthetic
+/// Ctrl+V, short enough that the user's own clipboard is not gone for long.
+const CLIPBOARD_RESTORE_DELAY: std::time::Duration = std::time::Duration::from_millis(900);
+
 fn paste_via_clipboard(text: &str, target_pid: Option<i32>) -> OtoResult<()> {
     set_clipboard_text(text)?;
     // Give clipboard consumers a beat before Ctrl+V.
@@ -50,6 +57,34 @@ fn paste_via_clipboard(text: &str, target_pid: Option<i32>) -> OtoResult<()> {
     simulate_paste_to(target_pid)?;
     std::thread::sleep(std::time::Duration::from_millis(40));
     Ok(())
+}
+
+/// Put `previous` back on the clipboard once the paste has landed.
+///
+/// Dictating should not cost the user whatever they had copied. Detached so the
+/// pipeline is not held up, and it re-reads first so a clipboard the user
+/// changed in the meantime is left alone.
+fn restore_clipboard_later(previous: Option<String>, injected: String) {
+    let Some(previous) = previous else {
+        return;
+    };
+    if previous == injected {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(CLIPBOARD_RESTORE_DELAY);
+        match get_clipboard_text() {
+            // Only restore if our transcript is still what is on the clipboard.
+            Ok(current) if current == injected => {
+                if let Err(error) = set_clipboard_text(&previous) {
+                    append_inject_log(&format!("clipboard restore failed: {error}"));
+                } else {
+                    append_inject_log("clipboard restored");
+                }
+            }
+            _ => append_inject_log("clipboard changed since paste — left as is"),
+        }
+    });
 }
 
 fn automatic_injection_failed(
@@ -70,6 +105,16 @@ pub async fn inject_text_to(
     mode: &InjectionMode,
     focus: Option<&FocusTarget>,
 ) -> OtoResult<InjectResult> {
+    inject_text_with_options(text, mode, focus, true).await
+}
+
+/// As [`inject_text_to`], with control over whether the clipboard is restored.
+pub async fn inject_text_with_options(
+    text: &str,
+    mode: &InjectionMode,
+    focus: Option<&FocusTarget>,
+    restore_clipboard: bool,
+) -> OtoResult<InjectResult> {
     let target_pid = focus.and_then(|f| f.pid);
     append_inject_log(&format!(
         "inject_text mode={mode:?} chars={} focus_before={} target_pid={:?}",
@@ -82,7 +127,7 @@ pub async fn inject_text_to(
         let restored = restore_focus_target(target);
         append_inject_log(&format!(
             "restore_focus ok={restored} target={:?} pid={:?}",
-            target.name, target.pid
+            target.class, target.pid
         ));
         let wait_ms = if restored { 200 } else { 80 };
         tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
@@ -92,6 +137,15 @@ pub async fn inject_text_to(
         }
     }
     append_inject_log(&format!("focus_at_type={}", active_focus_summary()));
+
+    // Snapshot before anything writes to the clipboard. Clipboard-only mode is
+    // excluded on purpose: there the clipboard *is* the delivery mechanism, so
+    // putting the old value back would throw the transcript away.
+    let previous_clipboard = if restore_clipboard && *mode != InjectionMode::ClipboardOnly {
+        get_clipboard_text().ok()
+    } else {
+        None
+    };
 
     let result = match mode {
         InjectionMode::ClipboardOnly => {
@@ -128,7 +182,13 @@ pub async fn inject_text_to(
         },
     };
     match &result {
-        Ok(kind) => append_inject_log(&format!("result={kind:?}")),
+        Ok(kind) => {
+            append_inject_log(&format!("result={kind:?}"));
+            // A fallback to clipboard-only means the user still has to paste it.
+            if *kind != InjectResult::ClipboardOnly {
+                restore_clipboard_later(previous_clipboard, text.to_string());
+            }
+        }
         Err(error) => append_inject_log(&format!("error={error}")),
     }
     result
@@ -168,7 +228,7 @@ pub async fn capture_selected_text() -> OtoResult<String> {
 }
 
 pub fn paste_tooling_summary() -> String {
-    "platform=windows; input=SendInput".into()
+    "platform=windows; input=SendInput; context=UIAutomation".into()
 }
 
 #[cfg(test)]

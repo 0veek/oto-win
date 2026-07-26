@@ -4,14 +4,20 @@ use crate::features::sync;
 
 const SYNC_ACCOUNT: &str = "sync";
 
+// Credential Manager calls are synchronous and can block while the vault is
+// busy. Keep them off the IPC thread, matching the provider key commands.
 #[tauri::command]
-pub fn set_sync_token(token: String) -> Result<(), OtoError> {
-    secrets::set_api_key(SYNC_ACCOUNT, &token)
+pub async fn set_sync_token(token: String) -> Result<(), OtoError> {
+    tauri::async_runtime::spawn_blocking(move || secrets::set_api_key(SYNC_ACCOUNT, &token))
+        .await
+        .map_err(|error| OtoError::Message(format!("keyring task failed: {error}")))?
 }
 
 #[tauri::command]
-pub fn sync_token_present() -> bool {
-    secrets::has_api_key(SYNC_ACCOUNT)
+pub async fn sync_token_present() -> bool {
+    tauri::async_runtime::spawn_blocking(|| secrets::has_api_key(SYNC_ACCOUNT))
+        .await
+        .unwrap_or(false)
 }
 
 #[tauri::command]

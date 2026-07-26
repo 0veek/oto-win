@@ -4,11 +4,14 @@
     IconBook2,
     IconBox,
     IconBraces,
+    IconChartBar,
     IconChevronDown,
     IconCursorText,
     IconHistory,
     IconInfoCircle,
     IconKeyboard,
+    IconLayoutGrid,
+    IconMicrophone,
     IconMinus,
     IconPalette,
     IconSearch,
@@ -55,10 +58,13 @@
     providers: IconServer,
     models: IconBox,
     hotkeys: IconKeyboard,
+    audio: IconMicrophone,
+    modes: IconLayoutGrid,
     dictionary: IconBook2,
     snippets: IconBraces,
     styles: IconWand,
     history: IconHistory,
+    stats: IconChartBar,
     appearance: IconPalette,
     privacy: IconShieldLock,
     injection: IconCursorText,
@@ -66,8 +72,8 @@
   };
 
   const groups = [
-    { label: "Voice", ids: ["providers", "models", "hotkeys", "injection"] },
-    { label: "Writing", ids: ["dictionary", "snippets", "styles", "history"] },
+    { label: "Voice", ids: ["providers", "models", "hotkeys", "audio", "modes", "injection"] },
+    { label: "Writing", ids: ["dictionary", "snippets", "styles", "history", "stats"] },
     { label: "System", ids: ["appearance", "privacy", "about"] },
   ];
 
