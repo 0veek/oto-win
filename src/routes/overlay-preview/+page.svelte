@@ -2,14 +2,15 @@
   import { onMount } from "svelte";
   import FloatingPill from "$lib/components/FloatingPill.svelte";
 
+  const initialParams = typeof window === "undefined" ? null : new URL(window.location.href).searchParams;
   let actions = $state(0);
-  let referenceMode = $state(false);
-  let targetMode = $state(false);
+  let referenceMode = $state(["reference", "single"].includes(initialParams?.get("mode") ?? ""));
+  let singleState = $state(initialParams?.get("mode") === "single" ? initialParams.get("state") : null);
 
   onMount(() => {
-    const mode = new URL(window.location.href).searchParams.get("mode");
-    referenceMode = mode === "reference";
-    targetMode = mode === "target";
+    const params = new URL(window.location.href).searchParams;
+    referenceMode = ["reference", "single"].includes(params.get("mode") ?? "");
+    singleState = params.get("mode") === "single" ? params.get("state") : null;
   });
 
   const examples = [
@@ -72,22 +73,20 @@
   <title>Oto overlay states</title>
 </svelte:head>
 
-<main class:reference-mode={referenceMode} class:target-mode={targetMode} class="overlay-preview">
-  {#if targetMode}
-    <FloatingPill preview={{ state: "processing" }} onPreviewAction={() => (actions += 1)} />
-  {:else if referenceMode}
+<main class:reference-mode={referenceMode} class:single-mode={singleState !== null} class="overlay-preview">
+  {#if referenceMode}
     <section class="overlay-preview__reference" aria-label="Primary overlay states">
-      {#each referenceExamples as preview (preview.state)}
+      {#each referenceExamples.filter((preview) => !singleState || preview.state === singleState) as preview (preview.state)}
         <FloatingPill {preview} onPreviewAction={() => (actions += 1)} />
       {/each}
     </section>
   {:else}
     <header>
       <div>
-        <p class="overlay-preview__eyebrow">Oto · overlay system</p>
-        <h1>One little pod, every state.</h1>
+        <p class="overlay-preview__eyebrow">Oto · overlay</p>
+        <h1>Every state the overlay can show.</h1>
       </div>
-      <p class="overlay-preview__meta">220 × 36 · {actions} test {actions === 1 ? "action" : "actions"}</p>
+      <p class="overlay-preview__meta">252 × 40 · {actions} test {actions === 1 ? "action" : "actions"}</p>
     </header>
 
     <section aria-label="Overlay component states">
@@ -114,8 +113,8 @@
   .overlay-preview {
     min-height: 100dvh;
     padding: clamp(2rem, 6vw, 5rem);
-    color: var(--color-ink);
-    background: var(--color-paper);
+    color: var(--ink);
+    background: var(--chassis);
   }
 
   .overlay-preview > header {
@@ -126,7 +125,7 @@
     gap: var(--space-lg);
     margin: 0 auto var(--space-xl);
     padding-block-end: var(--space-md);
-    border-block-end: var(--rule-thin) solid var(--color-rule);
+    border-block-end: var(--rule) solid var(--etch);
   }
 
   .overlay-preview h1,
@@ -145,14 +144,14 @@
 
   .overlay-preview__eyebrow,
   .overlay-preview__meta {
-    color: var(--color-muted);
-    font-family: var(--font-mono);
+    color: var(--muted);
+    font-family: var(--font-data);
     font-size: var(--text-xs);
   }
 
   .overlay-preview__eyebrow {
-    margin-block-end: var(--space-xs) !important;
-    color: var(--color-accent) !important;
+    margin-block-end: var(--space-xs);
+    color: var(--lamp-text);
   }
 
   .overlay-preview > section {
@@ -183,8 +182,8 @@
   }
 
   .overlay-preview__caption small {
-    color: var(--color-subtle);
-    font-family: var(--font-mono);
+    color: var(--faint);
+    font-family: var(--font-data);
     font-size: 0.6875rem;
     line-height: 1.35;
   }
@@ -201,21 +200,14 @@
 
   .overlay-preview > .overlay-preview__reference {
     display: grid;
-    width: 13.75rem;
+    width: 15.75rem;
     grid-template-columns: 1fr;
-    gap: 0.625rem;
-    transform: scale(2.6);
+    gap: 0.5rem;
+    transform: scale(2.35);
   }
 
-  .overlay-preview.target-mode {
-    display: grid;
-    width: 100vw;
-    height: 100vh;
-    min-height: 0;
-    place-items: center;
-    overflow: hidden;
-    padding: 0;
-    background: transparent;
+  .overlay-preview.single-mode > .overlay-preview__reference {
+    transform: none;
   }
 
   @media (max-width: 58rem) {

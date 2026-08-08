@@ -1528,8 +1528,8 @@ fn wav_duration_ms(byte_len: usize, sample_rate: u32) -> u64 {
 
 /// Overlay design size in logical pixels. Must match the `overlay` window in
 /// `tauri.conf.json`, or the first scale application resizes the pill.
-pub const OVERLAY_BASE_WIDTH: f64 = 236.0;
-pub const OVERLAY_BASE_HEIGHT: f64 = 48.0;
+pub const OVERLAY_BASE_WIDTH: f64 = 260.0;
+pub const OVERLAY_BASE_HEIGHT: f64 = 54.0;
 
 /// Grow the overlay window with the user's text-size setting.
 ///

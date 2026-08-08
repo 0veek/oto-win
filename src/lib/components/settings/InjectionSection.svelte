@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { AppConfig, InjectionMode } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
+  import type { AppConfig, InjectionMode } from "$lib/types";
 
   let {
     config = $bindable(),
@@ -16,12 +16,12 @@
     {
       value: "auto",
       label: "Auto",
-      hint: "Clipboard + Ctrl+V, then direct typing, then clipboard only.",
+      hint: "Clipboard + Ctrl+V first, direct typing if that fails, then clipboard only.",
     },
     {
       value: "direct_type",
       label: "Direct type",
-      hint: "Type character-by-character with synthetic Unicode key events (slower on long text).",
+      hint: "Type character-by-character as synthetic Unicode key events (slower on long text).",
     },
     {
       value: "clipboard_paste",
@@ -40,6 +40,7 @@
     testResult = null;
     testError = null;
     try {
+      // Persist mode first so the command reads the selection.
       await invoke("set_config", { cfg: config });
       testResult = await invoke<string>("test_injection");
     } catch (e) {
@@ -50,83 +51,98 @@
   }
 </script>
 
-<section class="space-y-6">
-  <header>
-    <h2 class="text-xl font-semibold tracking-tight">Injection</h2>
-    <p class="mt-1 text-sm text-slate-400">
-      How Oto delivers dictated text into the focused application.
+<section class="section">
+  <header class="section__head">
+    <h2 class="section__title">Insertion</h2>
+    <p class="section__lead">
+      How finished text reaches the window you were working in. Auto works almost
+      everywhere; the rest are for when a particular application is stubborn.
     </p>
   </header>
 
-  <div
-    class="space-y-5 rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-xl backdrop-blur-xl"
-  >
-    <fieldset class="space-y-3">
-      <legend class="text-sm font-medium text-slate-300">Mode</legend>
-      {#each MODES as mode (mode.value)}
-        <label
-          class="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-slate-900/40 px-4 py-3 transition hover:border-white/20 {config.injection_mode ===
-          mode.value
-            ? 'ring-1 ring-sky-400/40'
-            : ''}"
-        >
-          <input
-            type="radio"
-            name="injection_mode"
-            class="mt-1 h-4 w-4 border-white/20 bg-slate-900 text-sky-500 focus:ring-sky-400/30"
-            value={mode.value}
-            checked={config.injection_mode === mode.value}
-            onchange={() => {
-              config.injection_mode = mode.value;
-            }}
-          />
-          <span>
-            <span class="block text-sm font-medium text-slate-200">{mode.label}</span>
-            <span class="block text-xs text-slate-500">{mode.hint}</span>
-          </span>
-        </label>
-      {/each}
-    </fieldset>
+  <div class="rack">
+    <div class="rack__head">
+      <span class="plate-micro rack__title">Method</span>
+    </div>
 
-    <div
-      class="space-y-2 rounded-xl border border-sky-400/20 bg-sky-400/5 px-4 py-3 text-xs leading-relaxed text-sky-100/90"
-    >
-      <p class="font-medium text-sky-200">Windows text delivery</p>
-      <p>
-        Oto restores the target window, then pastes with <kbd class="rounded bg-black/30 px-1">Ctrl+V</kbd>
-        via Win32 <code class="rounded bg-white/5 px-1">SendInput</code>. If paste fails, it falls
-        back to Unicode typing, then leaves the transcript on the clipboard.
-      </p>
-      <p class="text-sky-100/70">
-        Elevated (Administrator) apps may block input from a non-elevated Oto — run both at the same
-        privilege level if insertion fails.
+    <div class="row row--stacked" role="radiogroup" aria-label="How to insert">
+      <span class="row__label">How to insert</span>
+      <div class="row__control choice-list">
+        {#each MODES as mode (mode.value)}
+          <label class="choice" data-active={config.injection_mode === mode.value}>
+            <input
+              type="radio"
+              name="injection_mode"
+              value={mode.value}
+              checked={config.injection_mode === mode.value}
+              onchange={() => {
+                config.injection_mode = mode.value;
+              }}
+            />
+            <span class="choice__copy">
+              <strong>{mode.label}</strong>
+              <span>{mode.hint}</span>
+            </span>
+          </label>
+        {/each}
+      </div>
+    </div>
+
+    <div class="row row--stacked row--flush">
+      <span class="row__label">How it works</span>
+      <p class="note row__control">
+        <span>
+          Oto brings the window you dictated from back to the foreground, then sends keystrokes
+          with the Win32 <span class="readout-tight">SendInput</span> API — no extra software to
+          install. Whatever you had copied is put back on the clipboard about a second later,
+          unless you changed it in the meantime.
+        </span>
       </p>
     </div>
 
-    <div class="space-y-3 border-t border-white/10 pt-4">
-      <div>
-        <div class="text-sm font-medium text-slate-200">Test insertion</div>
-        <p class="mt-0.5 text-xs text-slate-500">
-          Click Test, then immediately focus a text field in another app. Oto waits briefly, then
-          injects
-          <code class="rounded bg-white/5 px-1">Oto injection test</code>
-          using the mode above.
-        </p>
-      </div>
-      <button
-        type="button"
-        class="rounded-xl bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/15 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={testBusy}
-        onclick={testInjection}
-      >
-        {testBusy ? "Testing…" : "Test insertion"}
-      </button>
-      {#if testResult}
-        <p aria-live="polite" class="text-sm text-emerald-400">{testResult}</p>
-      {/if}
-      {#if testError}
-        <p role="alert" class="text-sm text-rose-400">{testError}</p>
-      {/if}
+    <div class="row row--stacked row--flush">
+      <span class="row__label">Elevated windows</span>
+      <p class="note note--warn row__control">
+        <span>
+          Windows will not let a normal application send input to a window running as
+          Administrator, so insertion into elevated apps, the UAC prompt and the sign-in screen
+          is blocked. Run Oto at the same privilege level as the target app, or use
+          <strong>Clipboard only</strong> and paste by hand.
+        </span>
+      </p>
     </div>
   </div>
+
+  <div class="rack">
+    <div class="rack__head">
+      <span class="plate-micro rack__title">Test</span>
+      <p class="rack__note">
+        Start the test, then click into a text field in another application. Oto waits a moment and
+        inserts <span class="readout-tight">Oto injection test</span> using the method above.
+      </p>
+    </div>
+
+    <div class="row row--switch row--flush">
+      <span class="row__copy">
+        <strong>Insert test text</strong>
+        <span>Uses the exact path a real dictation would take.</span>
+      </span>
+      <button type="button" class="btn" disabled={testBusy} onclick={testInjection}>
+        {testBusy ? "Inserting…" : "Run test"}
+      </button>
+    </div>
+
+    {#if testResult}
+      <p aria-live="polite" class="note note--ok test-note">{testResult}</p>
+    {/if}
+    {#if testError}
+      <p role="alert" class="note note--bad test-note">{testError}</p>
+    {/if}
+  </div>
 </section>
+
+<style>
+  .test-note {
+    margin-block-start: var(--space-sm);
+  }
+</style>

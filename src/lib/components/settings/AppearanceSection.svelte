@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { IconChevronDown } from "@tabler/icons-svelte";
   import type { AppConfig, IdleBehavior, ThemePreset } from "$lib/types";
@@ -13,22 +12,6 @@
   let previewBusy = $state(false);
   let micBusy = $state(false);
   let status = $state<string | null>(null);
-  /** True when the registry says Oto launches at sign-in but config disagrees. */
-  let autostartDrifted = $state(false);
-
-  onMount(() => {
-    // The startup entry can be removed outside Oto — Task Manager's Startup tab,
-    // or a reinstall to a different path. Reconcile the saved flag against what
-    // Windows actually holds, so the checkbox never claims something untrue.
-    void invoke<boolean>("autostart_active")
-      .then((active) => {
-        autostartDrifted = active !== config.autostart_enabled;
-      })
-      .catch(() => {
-        // Browser preview or plugin unavailable.
-        autostartDrifted = false;
-      });
-  });
 
   const IDLE_OPTIONS: {
     value: IdleBehavior;
@@ -81,117 +64,119 @@
   }
 </script>
 
-<section class="space-y-6">
-  <header>
-    <h2 class="text-xl font-semibold tracking-tight">Appearance</h2>
-    <p class="mt-1 text-sm text-slate-400">
-      Theme, startup, overlay idle behavior, and quick UI previews without a full dictation run.
+<section class="section">
+  <header class="section__head">
+    <h2 class="section__title">Appearance</h2>
+    <p class="section__lead">
+      How this window and the floating overlay look, whether Oto starts with
+      Windows, and two ways to check the overlay without dictating anything.
     </p>
   </header>
 
-  <div
-    class="space-y-5 rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-xl backdrop-blur-xl"
-  >
-    <div class="grid gap-4 sm:grid-cols-2">
-      <label class="block space-y-1.5">
-        <span class="text-sm font-medium text-slate-300">Theme</span>
-        <div class="select-wrap">
-          <select class="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-sm text-white" bind:value={config.theme}>
-            {#each THEMES as theme}<option value={theme.value}>{theme.label}</option>{/each}
-          </select>
-          <IconChevronDown aria-hidden="true" size={16} stroke={1.7} />
-        </div>
-      </label>
-      <label class="block space-y-1.5">
-        <span class="text-sm font-medium text-slate-300">Text size · {Math.round(config.font_scale * 100)}%</span>
-        <input class="w-full accent-sky-400" type="range" min="0.85" max="1.25" step="0.05" bind:value={config.font_scale} />
-      </label>
+  <div class="rack">
+    <div class="rack__head">
+      <span class="plate-micro rack__title">Display</span>
     </div>
 
-    <label class="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-slate-900/40 px-4 py-3">
-      <span><span class="block text-sm font-medium text-slate-200">Reduce motion</span><span class="block text-xs text-slate-500">Disable non-essential pulses and transitions.</span></span>
+    <label class="row">
+      <span class="row__label">Theme</span>
+      <span class="row__control select-wrap">
+        <select bind:value={config.theme}>
+          {#each THEMES as theme (theme.value)}
+            <option value={theme.value}>{theme.label}</option>
+          {/each}
+        </select>
+        <IconChevronDown aria-hidden="true" size={14} stroke={1.7} />
+      </span>
+    </label>
+
+    <label class="row">
+      <span class="row__label">Text size</span>
+      <span class="row__control">
+        <span class="slider-head">
+          <span class="row__hint">Scales everything in this window.</span>
+          <span class="slider-value">{Math.round(config.font_scale * 100)}%</span>
+        </span>
+        <input type="range" min="0.85" max="1.25" step="0.05" bind:value={config.font_scale} />
+      </span>
+    </label>
+
+    <label class="row row--switch row--flush">
+      <span class="row__copy">
+        <strong>Reduce motion</strong>
+        <span>Stops the pulses and transitions that are not carrying information.</span>
+      </span>
       <input type="checkbox" bind:checked={config.reduce_motion} />
     </label>
+  </div>
 
-    <label class="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-slate-900/40 px-4 py-3">
-      <span>
-        <span class="block text-sm font-medium text-slate-200">Start with Windows</span>
-        <span class="block text-xs text-slate-500">
-          Launch Oto in the notification area when you sign in, so the shortcut works without
-          opening anything.
-        </span>
-      </span>
-      <input type="checkbox" bind:checked={config.autostart_enabled} />
-    </label>
-    {#if autostartDrifted}
-      <p class="text-sm text-amber-300" role="status">
-        Windows and this setting disagree — something outside Oto changed the startup entry. Save to
-        apply what is shown here.
-      </p>
-    {/if}
+  <div class="rack">
+    <div class="rack__head">
+      <span class="plate-micro rack__title">Overlay</span>
+    </div>
 
-    <fieldset class="space-y-3">
-      <legend class="text-sm font-medium text-slate-300">When idle</legend>
-      {#each IDLE_OPTIONS as opt (opt.value)}
-        <label
-          class="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-slate-900/40 px-4 py-3 transition hover:border-white/20 {config.idle_behavior ===
-          opt.value
-            ? 'ring-1 ring-sky-400/40'
-            : ''}"
-        >
-          <input
-            type="radio"
-            name="idle_behavior"
-            class="mt-1 h-4 w-4 border-white/20 bg-slate-900 text-sky-500 focus:ring-sky-400/30"
-            value={opt.value}
-            checked={config.idle_behavior === opt.value}
-            onchange={() => {
-              config.idle_behavior = opt.value;
-            }}
-          />
-          <span>
-            <span class="block text-sm font-medium text-slate-200">{opt.label}</span>
-            <span class="block text-xs text-slate-500">{opt.hint}</span>
-          </span>
-        </label>
-      {/each}
-    </fieldset>
-
-    <div class="space-y-3 border-t border-white/10 pt-4">
-      <div>
-        <div class="text-sm font-medium text-slate-200">Preview &amp; mic test</div>
-        <p class="mt-0.5 text-xs text-slate-500">
-          Preview sends mock listening levels. Mic test opens the default input for ~2s and
-          streams real levels to the overlay.
-        </p>
+    <div class="row row--stacked row--flush" role="radiogroup" aria-label="Between dictations">
+      <span class="row__label">Between dictations</span>
+      <div class="row__control choice-list">
+        {#each IDLE_OPTIONS as opt (opt.value)}
+          <label class="choice" data-active={config.idle_behavior === opt.value}>
+            <input
+              type="radio"
+              name="idle_behavior"
+              value={opt.value}
+              checked={config.idle_behavior === opt.value}
+              onchange={() => {
+                config.idle_behavior = opt.value;
+              }}
+            />
+            <span class="choice__copy">
+              <strong>{opt.label}</strong>
+              <span>{opt.hint}</span>
+            </span>
+          </label>
+        {/each}
       </div>
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="rounded-xl bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/15 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={previewBusy}
-          onclick={previewListening}
-        >
-          {previewBusy ? "Previewing…" : "Preview listening UI"}
-        </button>
-        <button
-          type="button"
-          class="rounded-xl bg-sky-500/90 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={micBusy}
-          onclick={testMic}
-        >
-          {micBusy ? "Listening…" : "Test microphone"}
-        </button>
-      </div>
-      {#if status}
-        <p
-          class="text-sm {status.includes('failed') || status.includes('Failed')
-            ? 'text-rose-400'
-            : 'text-slate-300'}"
-        >
-          {status}
-        </p>
-      {/if}
     </div>
   </div>
+
+  <div class="rack">
+    <div class="rack__head">
+      <span class="plate-micro rack__title">Check the overlay</span>
+    </div>
+
+    <div class="row row--switch">
+      <span class="row__copy">
+        <strong>Show a fake dictation</strong>
+        <span>Drives the overlay with invented levels so you can see where it sits.</span>
+      </span>
+      <button type="button" class="btn" disabled={previewBusy} onclick={previewListening}>
+        {previewBusy ? "Showing…" : "Show it"}
+      </button>
+    </div>
+
+    <div class="row row--switch row--flush">
+      <span class="row__copy">
+        <strong>Test the microphone</strong>
+        <span>Opens your input for about two seconds and sends real levels to the overlay.</span>
+      </span>
+      <button type="button" class="btn" disabled={micBusy} onclick={testMic}>
+        {micBusy ? "Listening…" : "Listen"}
+      </button>
+    </div>
+
+    {#if status}
+      <p
+        class="note appearance-status"
+        class:note--bad={status.toLowerCase().includes("failed")}
+      >
+        {status}
+      </p>
+    {/if}
+  </div>
 </section>
+
+<style>
+  .appearance-status {
+    margin-block-start: var(--space-sm);
+  }
+</style>
